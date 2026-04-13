@@ -83,7 +83,7 @@ impl_binop!(bitxor, Bool, Int8, Int16, Int32, Int64);
 impl_binop!(shl, Int8, Int16, Int32, Int64);
 impl_binop!(shr, Int8, Int16, Int32, Int64);
 
-impl_unop!(not, Int8, Int16, Int32, Int64);
+impl_unop!(not, Bool, Int8, Int16, Int32, Int64);
 
 impl_binop!(or, ||, Bool);
 impl_binop!(and, &&, Bool);
