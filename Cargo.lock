@@ -59,8 +59,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "jealous"
-version = "0.1.0"
+name = "klystron"
+version = "0.0.1"
 dependencies = [
  "log",
  "pretty_env_logger",

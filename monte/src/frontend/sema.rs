@@ -39,8 +39,6 @@ impl Env {
 #[derive(Debug)]
 pub struct Analyzer<'a> {
     env: Env,
-    /// struct name -> fields
-    structs: HashMap<String, Vec<(String, Type)>>,
     /// function name -> (param types, return type)
     functions: HashMap<String, (bool, Vec<Type>, Type)>,
     /// return type of the function we're currently inside
@@ -55,7 +53,6 @@ impl<'a> Analyzer<'a> {
     pub fn new(reporter: &'a mut ErrorReporter) -> Self {
         Self {
             env: Env::default(),
-            structs: HashMap::new(),
             functions: HashMap::new(),
             current_fn_ret: None,
             loop_depth: 0,
@@ -89,16 +86,6 @@ impl<'a> Analyzer<'a> {
     fn collect_definitions(&mut self, stmts: &[Stmt]) -> Result<(), Error> {
         for stmt in stmts {
             match &stmt.node {
-                StmtKind::StructDef { name, fields } => {
-                    if self.structs.contains_key(name) {
-                        return Err(Error::new(
-                            format!("struct '{}' is already defined", name),
-                            stmt.span.clone(),
-                        ));
-                    }
-                    self.structs.insert(name.clone(), fields.clone());
-                }
-
                 StmtKind::FunctionDef {
                     name,
                     params,
@@ -215,9 +202,6 @@ impl<'a> Analyzer<'a> {
 
                 self.current_fn_ret = prev_ret;
             }
-
-            // already registered in first pass
-            StmtKind::StructDef { .. } => {}
 
             StmtKind::If {
                 cond,
@@ -352,100 +336,6 @@ impl<'a> Analyzer<'a> {
                 self.check_assignable(&target_ty, &value_ty, value.span.clone())?;
                 Ok(target_ty)
             }
-
-            ExprKind::IndexAccess { target, index } => {
-                let target_ty = self.analyze_expr(target)?;
-                let index_ty = self.analyze_expr(index)?;
-
-                if !is_integer(&index_ty) {
-                    return Err(Error::new(
-                        format!("array index must be integer, got {:?}", index_ty),
-                        index.span.clone(),
-                    ));
-                }
-
-                match target_ty {
-                    Type::Array(inner, _) => Ok(*inner),
-                    _ => Err(Error::new(
-                        format!("cannot index into {:?}", target_ty),
-                        target.span.clone(),
-                    )),
-                }
-            }
-
-            ExprKind::ArrayLiteral { elements } => {
-                if elements.is_empty() {
-                    return Err(Error::new(
-                        "cannot infer element type of empty array literal".into(),
-                        expr.span.clone(),
-                    ));
-                }
-
-                let first_ty = self.analyze_expr(&elements[0])?;
-                for elem in &elements[1..] {
-                    let ty = self.analyze_expr(elem)?;
-                    self.check_assignable(&first_ty, &ty, elem.span.clone())?;
-                }
-
-                Ok(Type::Array(Box::new(first_ty), elements.len()))
-            } // ExprKind::StructLiteral {
-              //     struct_name,
-              //     fields,
-              // } => {
-              //     let struct_fields = match self.structs.get(struct_name).cloned() {
-              //         Some(f) => f,
-              //         None => {
-              //             return Err(Error::new(
-              //                 format!("undefined struct '{}'", struct_name),
-              //                 expr.span.clone(),
-              //             ))
-              //         }
-              //     };
-
-              //     // check for unknown fields
-              //     for (field_spanned, field_expr) in fields {
-              //         match struct_fields.iter().find(|(n, _)| n == &field_spanned.node) {
-              //             None => {
-              //                 return Err(Error::new(
-              //                     format!(
-              //                         "struct '{}' has no field '{}'",
-              //                         struct_name, field_spanned.node
-              //                     ),
-              //                     field_spanned.span.clone(),
-              //                 ))
-              //             }
-              //             Some((_, expected_ty)) => {
-              //                 let actual_ty = self.analyze_expr(field_expr)?;
-              //                 let expected_ty = expected_ty.clone();
-              //                 self.check_assignable(
-              //                     &expected_ty,
-              //                     &actual_ty,
-              //                     field_expr.span.clone(),
-              //                 )?;
-              //             }
-              //         }
-              //     }
-
-              //     // check for missing fields
-              //     for (expected_name, _) in &struct_fields {
-              //         if !fields.iter().any(|(n, _)| &n.node == expected_name) {
-              //             return Err(Error::new(
-              //                 format!(
-              //                     "missing field '{}' in '{}' literal",
-              //                     expected_name, struct_name
-              //                 ),
-              //                 expr.span.clone(),
-              //             ));
-              //         }
-              //     }
-
-              //     Ok(Type::Struct(struct_name.clone()))
-              // }
-
-              // ExprKind::MemberAccess { target, field } => {
-              //     let target_ty = self.analyze_expr(target)?;
-              //     self.resolve_field(&target_ty, field, expr.span.clone())
-              // }
         }
     }
 
@@ -462,30 +352,6 @@ impl<'a> Analyzer<'a> {
                     lvalue.span.clone(),
                 )),
             },
-
-            // LValueKind::MemberAccess { target, field } => {
-            //     let target_ty = self.analyze_lvalue(target)?;
-            //     self.resolve_field(&target_ty, field, lvalue.span.clone())
-            // }
-            LValueKind::IndexAccess { target, index } => {
-                let target_ty = self.analyze_lvalue(target)?;
-                let index_ty = self.analyze_expr(index)?;
-
-                if !is_integer(&index_ty) {
-                    return Err(Error::new(
-                        format!("array index must be integer, got {:?}", index_ty),
-                        index.span.clone(),
-                    ));
-                }
-
-                match target_ty {
-                    Type::Array(inner, _) => Ok(*inner),
-                    _ => Err(Error::new(
-                        format!("cannot index into {:?}", target_ty),
-                        target.span.clone(),
-                    )),
-                }
-            }
         }
     }
 

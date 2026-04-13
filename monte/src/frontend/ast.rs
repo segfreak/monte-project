@@ -71,14 +71,6 @@ pub enum UnOp {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LValueKind {
     Ident(String),
-    // MemberAccess {
-    //     target: Box<LValue>,
-    //     field: String,
-    // },
-    IndexAccess {
-        target: Box<LValue>,
-        index: Box<Expr>,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,28 +100,6 @@ pub enum ExprKind {
         ty: Type,
     },
 
-    /// {target}[{index}]
-    IndexAccess {
-        target: Box<Expr>,
-        index: Box<Expr>,
-    },
-
-    /// [e1, e2, e3]
-    ArrayLiteral {
-        elements: Vec<Expr>,
-    },
-
-    // /// {name} { {fields...} }
-    // StructLiteral {
-    //     struct_name: String,
-    //     fields: Vec<(Spanned<String>, Expr)>,
-    // },
-    /// {expr}.{field_name}
-    // MemberAccess {
-    //     target: Box<Expr>,
-    //     field: String,
-    // },
-
     /// {callee}({args...})
     Call {
         callee: Box<Expr>,
@@ -158,12 +128,6 @@ pub enum StmtKind {
     /// { body... }
     Compound {
         body: Vec<Stmt>,
-    },
-
-    /// struct {name} { {fields...} }
-    StructDef {
-        name: String,
-        fields: Vec<(String, Type)>,
     },
 
     /// fn {name}({params...}) ?{: ret}

@@ -885,28 +885,6 @@ impl Parser {
                 self.eat(&TokenKind::RParen)?;
                 return Ok(expr);
             }
-            TokenKind::LBracket => {
-                let mut elements = Vec::new();
-
-                if self.peek() != &TokenKind::RBracket {
-                    loop {
-                        elements.push(self.parse_expr(0)?);
-
-                        if self.peek() == &TokenKind::Comma {
-                            self.next();
-                        } else {
-                            break;
-                        }
-                    }
-                }
-
-                self.eat(&TokenKind::RBracket)?;
-
-                return Ok(Spanned::new(
-                    ExprKind::ArrayLiteral { elements },
-                    start..self.prev_span().end,
-                ));
-            }
             t => {
                 return Err(Error::new(
                     format!("unexpected token {:?}", t),
