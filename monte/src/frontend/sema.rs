@@ -1,0 +1,673 @@
+use std::collections::HashMap;
+
+use crate::typesys::{match_type, Type};
+
+use super::ast::*;
+use super::error::*;
+use super::utils::*;
+
+#[derive(Debug, Default)]
+struct Env {
+    scopes: Vec<HashMap<String, Type>>,
+}
+
+impl Env {
+    fn push(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    fn pop(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn define(&mut self, name: String, ty: Type) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, ty);
+        }
+    }
+
+    fn lookup(&self, name: &str) -> Option<&Type> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(ty) = scope.get(name) {
+                return Some(ty);
+            }
+        }
+        None
+    }
+}
+
+#[derive(Debug)]
+pub struct Analyzer<'a> {
+    env: Env,
+    /// struct name -> fields
+    structs: HashMap<String, Vec<(String, Type)>>,
+    /// function name -> (param types, return type)
+    functions: HashMap<String, (bool, Vec<Type>, Type)>,
+    /// return type of the function we're currently inside
+    current_fn_ret: Option<Type>,
+    /// how many nested loops we're in (for break/continue)
+    loop_depth: usize,
+    /// error reporter
+    reporter: &'a mut ErrorReporter,
+}
+
+impl<'a> Analyzer<'a> {
+    pub fn new(reporter: &'a mut ErrorReporter) -> Self {
+        Self {
+            env: Env::default(),
+            structs: HashMap::new(),
+            functions: HashMap::new(),
+            current_fn_ret: None,
+            loop_depth: 0,
+            reporter,
+        }
+    }
+
+    pub fn analyze(&mut self, program: &Program) -> Result<(), Error> {
+        // first pass: collect all top-level struct/fn signatures
+        // so functions can call each other regardless of order
+        self.collect_definitions(program)?;
+
+        self.env.push();
+        for stmt in program {
+            match self.analyze_stmt(stmt) {
+                Ok(..) => {}
+                Err(error) => {
+                    self.reporter.report(error);
+                }
+            };
+        }
+        self.env.pop();
+
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // First pass: collect struct/function signatures without checking bodies
+    // ------------------------------------------------------------------
+
+    fn collect_definitions(&mut self, stmts: &[Stmt]) -> Result<(), Error> {
+        for stmt in stmts {
+            match &stmt.node {
+                StmtKind::StructDef { name, fields } => {
+                    if self.structs.contains_key(name) {
+                        return Err(Error::new(
+                            format!("struct '{}' is already defined", name),
+                            stmt.span.clone(),
+                        ));
+                    }
+                    self.structs.insert(name.clone(), fields.clone());
+                }
+
+                StmtKind::FunctionDef {
+                    name,
+                    params,
+                    ret,
+                    variadic,
+                    ..
+                } => {
+                    if self.functions.contains_key(name) {
+                        return Err(Error::new(
+                            format!("function '{}' is already defined", name),
+                            stmt.span.clone(),
+                        ));
+                    }
+                    let param_types = params.iter().map(|(_, t)| t.clone()).collect();
+                    self.functions
+                        .insert(name.clone(), (*variadic, param_types, ret.clone()));
+                }
+
+                StmtKind::FunctionDecl {
+                    name,
+                    params,
+                    ret,
+                    variadic,
+                    ..
+                } => {
+                    if self.functions.contains_key(name) {
+                        return Err(Error::new(
+                            format!("function '{}' is already defined", name),
+                            stmt.span.clone(),
+                        ));
+                    }
+                    let param_types = params.iter().map(|(_, t)| t.clone()).collect();
+                    self.functions
+                        .insert(name.clone(), (*variadic, param_types, ret.clone()));
+                }
+
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Statements
+    // ------------------------------------------------------------------
+
+    fn analyze_stmt(&mut self, stmt: &Stmt) -> Result<(), Error> {
+        match &stmt.node {
+            StmtKind::VarDecl { name, ty, init } => {
+                let init_ty = self.analyze_expr(init)?;
+                self.check_assignable(ty, &init_ty, init.span.clone())?;
+                self.env.define(name.clone(), ty.clone());
+            }
+
+            StmtKind::Expr(expr) => {
+                self.analyze_expr(expr)?;
+            }
+
+            StmtKind::Return(expr) => {
+                let ret_ty = match expr {
+                    Some(e) => self.analyze_expr(e)?,
+                    None => Type::Void,
+                };
+                match &self.current_fn_ret {
+                    None => {
+                        return Err(Error::new(
+                            "'return' outside of function".into(),
+                            stmt.span.clone(),
+                        ));
+                    }
+                    Some(expected) => {
+                        if !match_type(&ret_ty, expected) {
+                            return Err(Error::new(
+                                format!(
+                                    "return type mismatch: expected {:?}, got {:?}",
+                                    expected, ret_ty
+                                ),
+                                stmt.span.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+
+            StmtKind::Compound { body } => {
+                self.env.push();
+                for s in body {
+                    if let Err(error) = self.analyze_stmt(s) {
+                        self.reporter.report(error);
+                    }
+                }
+                self.env.pop();
+            }
+
+            // already registered in first pass
+            StmtKind::FunctionDecl { .. } => {}
+
+            // already registered in first pass, just check body
+            StmtKind::FunctionDef {
+                params, ret, body, ..
+            } => {
+                let prev_ret = self.current_fn_ret.replace(ret.clone());
+
+                self.env.push();
+                for (pname, ptype) in params {
+                    self.env.define(pname.clone(), ptype.clone());
+                }
+                for s in body {
+                    if let Err(error) = self.analyze_stmt(s) {
+                        self.reporter.report(error);
+                    }
+                }
+                self.env.pop();
+
+                self.current_fn_ret = prev_ret;
+            }
+
+            // already registered in first pass
+            StmtKind::StructDef { .. } => {}
+
+            StmtKind::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                let cond_ty = self.analyze_expr(cond)?;
+                if cond_ty != Type::Bool {
+                    return Err(Error::new(
+                        format!("if condition must be bool, got {:?}", cond_ty),
+                        cond.span.clone(),
+                    ));
+                }
+                self.analyze_stmt(then_branch)?;
+                if let Some(eb) = else_branch {
+                    self.analyze_stmt(eb)?;
+                }
+            }
+
+            StmtKind::While { cond, body } => {
+                let cond_ty = self.analyze_expr(cond)?;
+                if cond_ty != Type::Bool {
+                    return Err(Error::new(
+                        format!("while condition must be bool, got {:?}", cond_ty),
+                        cond.span.clone(),
+                    ));
+                }
+                self.loop_depth += 1;
+                self.analyze_stmt(body)?;
+                self.loop_depth -= 1;
+            }
+
+            StmtKind::Break | StmtKind::Continue => {
+                if self.loop_depth == 0 {
+                    let kw = if matches!(stmt.node, StmtKind::Break) {
+                        "break"
+                    } else {
+                        "continue"
+                    };
+                    return Err(Error::new(
+                        format!("'{}' outside of loop", kw),
+                        stmt.span.clone(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
+    // Expressions — returns the type of the expression
+    // ------------------------------------------------------------------
+
+    fn analyze_expr(&mut self, expr: &Expr) -> Result<Type, Error> {
+        match &expr.node {
+            ExprKind::Dummy => Err(Error::new("dummy expression".into(), expr.span.clone())),
+
+            ExprKind::Cast { ty, .. } => Ok(ty.clone()),
+
+            ExprKind::Constant(lit) => Ok(self.literal_type(lit)),
+
+            ExprKind::Ident(name) => match self.env.lookup(name) {
+                Some(ty) => Ok(ty.clone()),
+                None => Err(Error::new(
+                    format!("undefined variable '{}'", name),
+                    expr.span.clone(),
+                )),
+            },
+
+            ExprKind::Binary { op, left, right } => {
+                self.analyze_binary(*op, left, right, expr.span.clone())
+            }
+
+            ExprKind::Unary { op, expr: inner } => self.analyze_unary(*op, inner),
+
+            ExprKind::Call { callee, args } => {
+                let fn_name = match &callee.node {
+                    ExprKind::Ident(name) => name.clone(),
+                    _ => {
+                        return Err(Error::new(
+                            "only direct function calls are supported".into(),
+                            callee.span.clone(),
+                        ))
+                    }
+                };
+
+                let (variadic, param_types, ret_ty) = match self.functions.get(&fn_name).cloned() {
+                    Some(sig) => sig,
+                    None => {
+                        return Err(Error::new(
+                            format!("undefined function '{}'", fn_name),
+                            callee.span.clone(),
+                        ))
+                    }
+                };
+
+                if !variadic {
+                    if args.len() != param_types.len() {
+                        return Err(Error::new(
+                            format!(
+                                "'{}' expects {} argument(s), got {}",
+                                fn_name,
+                                param_types.len(),
+                                args.len()
+                            ),
+                            expr.span.clone(),
+                        ));
+                    }
+                } else if args.len() < param_types.len() {
+                    return Err(Error::new(
+                        format!(
+                            "'{}' expects at least {} argument(s), got {}",
+                            fn_name,
+                            param_types.len(),
+                            args.len()
+                        ),
+                        expr.span.clone(),
+                    ));
+                }
+
+                for (arg, expected) in args.iter().zip(param_types.iter()) {
+                    let arg_ty = self.analyze_expr(arg)?;
+                    self.check_assignable(expected, &arg_ty, arg.span.clone())?;
+                }
+
+                Ok(ret_ty)
+            }
+
+            ExprKind::Assign { target, value } => {
+                let target_ty = self.analyze_lvalue(target)?;
+                let value_ty = self.analyze_expr(value)?;
+                self.check_assignable(&target_ty, &value_ty, value.span.clone())?;
+                Ok(target_ty)
+            }
+
+            ExprKind::IndexAccess { target, index } => {
+                let target_ty = self.analyze_expr(target)?;
+                let index_ty = self.analyze_expr(index)?;
+
+                if !is_integer(&index_ty) {
+                    return Err(Error::new(
+                        format!("array index must be integer, got {:?}", index_ty),
+                        index.span.clone(),
+                    ));
+                }
+
+                match target_ty {
+                    Type::Array(inner, _) => Ok(*inner),
+                    _ => Err(Error::new(
+                        format!("cannot index into {:?}", target_ty),
+                        target.span.clone(),
+                    )),
+                }
+            }
+
+            ExprKind::ArrayLiteral { elements } => {
+                if elements.is_empty() {
+                    return Err(Error::new(
+                        "cannot infer element type of empty array literal".into(),
+                        expr.span.clone(),
+                    ));
+                }
+
+                let first_ty = self.analyze_expr(&elements[0])?;
+                for elem in &elements[1..] {
+                    let ty = self.analyze_expr(elem)?;
+                    self.check_assignable(&first_ty, &ty, elem.span.clone())?;
+                }
+
+                Ok(Type::Array(Box::new(first_ty), elements.len()))
+            } // ExprKind::StructLiteral {
+              //     struct_name,
+              //     fields,
+              // } => {
+              //     let struct_fields = match self.structs.get(struct_name).cloned() {
+              //         Some(f) => f,
+              //         None => {
+              //             return Err(Error::new(
+              //                 format!("undefined struct '{}'", struct_name),
+              //                 expr.span.clone(),
+              //             ))
+              //         }
+              //     };
+
+              //     // check for unknown fields
+              //     for (field_spanned, field_expr) in fields {
+              //         match struct_fields.iter().find(|(n, _)| n == &field_spanned.node) {
+              //             None => {
+              //                 return Err(Error::new(
+              //                     format!(
+              //                         "struct '{}' has no field '{}'",
+              //                         struct_name, field_spanned.node
+              //                     ),
+              //                     field_spanned.span.clone(),
+              //                 ))
+              //             }
+              //             Some((_, expected_ty)) => {
+              //                 let actual_ty = self.analyze_expr(field_expr)?;
+              //                 let expected_ty = expected_ty.clone();
+              //                 self.check_assignable(
+              //                     &expected_ty,
+              //                     &actual_ty,
+              //                     field_expr.span.clone(),
+              //                 )?;
+              //             }
+              //         }
+              //     }
+
+              //     // check for missing fields
+              //     for (expected_name, _) in &struct_fields {
+              //         if !fields.iter().any(|(n, _)| &n.node == expected_name) {
+              //             return Err(Error::new(
+              //                 format!(
+              //                     "missing field '{}' in '{}' literal",
+              //                     expected_name, struct_name
+              //                 ),
+              //                 expr.span.clone(),
+              //             ));
+              //         }
+              //     }
+
+              //     Ok(Type::Struct(struct_name.clone()))
+              // }
+
+              // ExprKind::MemberAccess { target, field } => {
+              //     let target_ty = self.analyze_expr(target)?;
+              //     self.resolve_field(&target_ty, field, expr.span.clone())
+              // }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // LValues
+    // ------------------------------------------------------------------
+
+    fn analyze_lvalue(&mut self, lvalue: &LValue) -> Result<Type, Error> {
+        match &lvalue.node {
+            LValueKind::Ident(name) => match self.env.lookup(name) {
+                Some(ty) => Ok(ty.clone()),
+                None => Err(Error::new(
+                    format!("undefined variable '{}'", name),
+                    lvalue.span.clone(),
+                )),
+            },
+
+            // LValueKind::MemberAccess { target, field } => {
+            //     let target_ty = self.analyze_lvalue(target)?;
+            //     self.resolve_field(&target_ty, field, lvalue.span.clone())
+            // }
+            LValueKind::IndexAccess { target, index } => {
+                let target_ty = self.analyze_lvalue(target)?;
+                let index_ty = self.analyze_expr(index)?;
+
+                if !is_integer(&index_ty) {
+                    return Err(Error::new(
+                        format!("array index must be integer, got {:?}", index_ty),
+                        index.span.clone(),
+                    ));
+                }
+
+                match target_ty {
+                    Type::Array(inner, _) => Ok(*inner),
+                    _ => Err(Error::new(
+                        format!("cannot index into {:?}", target_ty),
+                        target.span.clone(),
+                    )),
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    // fn resolve_field(&self, ty: &Type, field: &str, span: Span) -> Result<Type, Error> {
+    //     match ty {
+    //         Type::Struct(name) => {
+    //             let fields = self.structs.get(name).ok_or_else(|| {
+    //                 Error::new(format!("undefined struct '{}'", name), span.clone())
+    //             })?;
+    //             fields
+    //                 .iter()
+    //                 .find(|(n, _)| n == field)
+    //                 .map(|(_, t)| t.clone())
+    //                 .ok_or_else(|| {
+    //                     Error::new(format!("struct '{}' has no field '{}'", name, field), span)
+    //                 })
+    //         }
+    //         _ => Err(Error::new(
+    //             format!("cannot access field '{}' on {:?}", field, ty),
+    //             span,
+    //         )),
+    //     }
+    // }
+
+    fn analyze_binary(
+        &mut self,
+        op: BinOp,
+        left: &Expr,
+        right: &Expr,
+        span: Span,
+    ) -> Result<Type, Error> {
+        let lt = self.analyze_expr(left)?;
+        let rt = self.analyze_expr(right)?;
+
+        match op {
+            // arithmetic
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
+                if !is_numeric(&lt) {
+                    return Err(Error::new(
+                        format!("arithmetic operator requires numeric type, got {:?}", lt),
+                        left.span.clone(),
+                    ));
+                }
+                if !match_type(&lt, &rt) {
+                    return Err(Error::new(
+                        format!("type mismatch: {:?} vs {:?}", lt, rt),
+                        span,
+                    ));
+                }
+                Ok(lt)
+            }
+
+            // bitwise
+            BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::BitShl | BinOp::BitShr => {
+                if !is_integer(&lt) {
+                    return Err(Error::new(
+                        format!("bitwise operator requires integer type, got {:?}", lt),
+                        left.span.clone(),
+                    ));
+                }
+                if lt != rt {
+                    return Err(Error::new(
+                        format!("type mismatch: {:?} vs {:?}", lt, rt),
+                        span,
+                    ));
+                }
+                Ok(lt)
+            }
+
+            // logical
+            BinOp::And | BinOp::Or => {
+                if lt != Type::Bool {
+                    return Err(Error::new(
+                        format!("logical operator requires bool, got {:?}", lt),
+                        left.span.clone(),
+                    ));
+                }
+                if rt != Type::Bool {
+                    return Err(Error::new(
+                        format!("logical operator requires bool, got {:?}", rt),
+                        right.span.clone(),
+                    ));
+                }
+                Ok(Type::Bool)
+            }
+
+            // equality
+            BinOp::Eq | BinOp::NotEq => {
+                if !match_type(&lt, &rt) {
+                    return Err(Error::new(
+                        format!("cannot compare {:?} with {:?}", lt, rt),
+                        span,
+                    ));
+                }
+                Ok(Type::Bool)
+            }
+
+            // comparison
+            BinOp::Less | BinOp::LessEq | BinOp::Great | BinOp::GreatEq => {
+                if !is_numeric(&lt) {
+                    return Err(Error::new(
+                        format!("comparison requires numeric type, got {:?}", lt),
+                        left.span.clone(),
+                    ));
+                }
+                if !match_type(&lt, &rt) {
+                    return Err(Error::new(
+                        format!("type mismatch: {:?} vs {:?}", lt, rt),
+                        span,
+                    ));
+                }
+                Ok(Type::Bool)
+            }
+        }
+    }
+
+    fn analyze_unary(&mut self, op: UnOp, expr: &Expr) -> Result<Type, Error> {
+        let ty = self.analyze_expr(expr)?;
+        match op {
+            UnOp::Neg => {
+                if !is_numeric(&ty) {
+                    return Err(Error::new(
+                        format!("'-' requires numeric type, got {:?}", ty),
+                        expr.span.clone(),
+                    ));
+                }
+                Ok(ty)
+            }
+            UnOp::BitNeg => {
+                if !is_integer(&ty) {
+                    return Err(Error::new(
+                        format!("'~' requires integer type, got {:?}", ty),
+                        expr.span.clone(),
+                    ));
+                }
+                Ok(ty)
+            }
+            UnOp::Not => {
+                if ty != Type::Bool {
+                    return Err(Error::new(
+                        format!("'!' requires bool, got {:?}", ty),
+                        expr.span.clone(),
+                    ));
+                }
+                Ok(Type::Bool)
+            }
+        }
+    }
+
+    fn literal_type(&self, lit: &ConstantLiteral) -> Type {
+        match lit {
+            ConstantLiteral::Integer(_) => Type::IntLit,
+            ConstantLiteral::FloatPoint(_) => Type::Float64,
+            ConstantLiteral::Boolean(_) => Type::Bool,
+            ConstantLiteral::String(_) => Type::String,
+        }
+    }
+
+    fn check_assignable(&self, expected: &Type, actual: &Type, span: Span) -> Result<(), Error> {
+        if !match_type(actual, expected) {
+            Err(Error::new(
+                format!("type mismatch: expected {:?}, got {:?}", expected, actual),
+                span,
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+fn is_integer(ty: &Type) -> bool {
+    matches!(ty, Type::Int8 | Type::Int16 | Type::Int32 | Type::Int64)
+}
+
+fn is_float(ty: &Type) -> bool {
+    matches!(ty, Type::Float32 | Type::Float64)
+}
+
+fn is_numeric(ty: &Type) -> bool {
+    is_integer(ty) || is_float(ty)
+}

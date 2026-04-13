@@ -1,0 +1,9 @@
+[package]
+name = "klystron"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+log = "0.4.29"
+pretty_env_logger = "0.5.0"
+thiserror = "2.0.18"
