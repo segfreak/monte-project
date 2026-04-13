@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use jealous::{
+use klystron::{
     error::Result,
     types::TypeKind,
     vm::{
