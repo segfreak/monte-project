@@ -507,10 +507,9 @@ impl<'a> Analyzer<'a> {
 
     fn literal_type(&self, lit: &ConstantLiteral) -> Type {
         match lit {
-            ConstantLiteral::Integer(_) => Type::IntLit,
-            ConstantLiteral::FloatPoint(_) => Type::Float64,
+            ConstantLiteral::Integer(_) => Type::Int32,
+            ConstantLiteral::FloatPoint(_) => Type::Float32,
             ConstantLiteral::Boolean(_) => Type::Bool,
-            ConstantLiteral::String(_) => Type::String,
         }
     }
 

@@ -3,6 +3,93 @@ use crate::{
     types::{HostFloat, HostInt, TypeKind},
 };
 
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Not, Shl, Shr, Sub};
+
+macro_rules! impl_unop {
+    ($method:ident, $($variant:ident),*) => {
+        impl Value {
+            pub fn $method(self) -> Result<Self> {
+                match self {
+                    $(
+                        Value::$variant(a) => Ok(Value::$variant(a.$method())),
+                    )*
+                    _ => Err(Error::TypeError(format!(
+                        "unary operation '{}' is not supported for this type",
+                        stringify!($method)
+                    ))),
+                }
+            }
+        }
+    };
+    ($method:ident, $op:tt, $($variant:ident),*) => {
+        impl Value {
+            pub fn $method(self) -> Result<Self> {
+                match self {
+                    $(
+                        Value::$variant(a) => Ok(Value::$variant($op a)),
+                    )*
+                    _ => Err(Error::TypeError(format!(
+                        "unary operation '{}' is not supported for this type",
+                        stringify!($method)
+                    ))),
+                }
+            }
+        }
+    };
+}
+
+macro_rules! impl_binop {
+    ($method:ident, $($variant:ident),*) => {
+        impl Value {
+            pub fn $method(self, rhs: Self) -> Result<Self> {
+                match (self, rhs) {
+                    $(
+                        (Value::$variant(a), Value::$variant(b)) => Ok(Value::$variant(a.$method(b))),
+                    )*
+                    _ => Err(Error::TypeError(format!(
+                        "operation '{}' is not supported for these types",
+                        stringify!($method)
+                    ))),
+                }
+            }
+        }
+    };
+    ($method:ident, $op:tt, $($variant:ident),*) => {
+        impl Value {
+            pub fn $method(self, rhs: Self) -> Result<Self> {
+                match (self, rhs) {
+                    $(
+                        (Value::$variant(a), Value::$variant(b)) => Ok(Value::$variant(a $op b)),
+                    )*
+                    _ => Err(Error::TypeError(format!(
+                        "operation '{}' is not supported for these types",
+                        stringify!($method)
+                    ))),
+                }
+            }
+        }
+    };
+}
+
+impl_binop!(add, Int8, Int16, Int32, Int64, Float32, Float64);
+impl_binop!(sub, Int8, Int16, Int32, Int64, Float32, Float64);
+impl_binop!(mul, Int8, Int16, Int32, Int64, Float32, Float64);
+impl_binop!(div, Int8, Int16, Int32, Int64, Float32, Float64);
+
+impl_binop!(bitand, Bool, Int8, Int16, Int32, Int64);
+impl_binop!(bitor, Bool, Int8, Int16, Int32, Int64);
+impl_binop!(bitxor, Bool, Int8, Int16, Int32, Int64);
+
+impl_binop!(shl, Int8, Int16, Int32, Int64);
+impl_binop!(shr, Int8, Int16, Int32, Int64);
+
+impl_unop!(not, Int8, Int16, Int32, Int64);
+
+impl_binop!(or, ||, Bool);
+impl_binop!(and, &&, Bool);
+
+impl_unop!(neg, Int8, Int16, Int32, Int64, Float32, Float64);
+
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
     Int8(i8),
@@ -16,29 +103,13 @@ pub enum Value {
     Bool(bool),
 }
 
-fn arith_int(a: HostInt, b: HostInt, op: &str) -> Result<HostInt> {
-    match op {
-        "add" => Ok(a.wrapping_add(b)),
-        "sub" => Ok(a.wrapping_sub(b)),
-        "mul" => Ok(a.wrapping_mul(b)),
-        "div" => {
-            if b == 0 {
-                return Err(Error::DivisionByZero);
-            }
-            Ok(a / b)
-        }
-        _ => unreachable!(),
-    }
-}
-
-fn arith_float(a: HostFloat, b: HostFloat, op: &str) -> Result<f64> {
-    match op {
-        "add" => Ok(a + b),
-        "sub" => Ok(a - b),
-        "mul" => Ok(a * b),
-        "div" => Ok(a / b),
-        _ => unreachable!(),
-    }
+pub enum CompareOp {
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
 }
 
 impl Value {
@@ -56,53 +127,35 @@ impl Value {
         }
     }
 
-    pub(super) fn arith(self, rhs: Value, op: &str) -> Result<Value> {
-        match (self, rhs) {
-            (Value::Int8(a), Value::Int8(b)) => {
-                Ok(Value::Int8(arith_int(a as HostInt, b as HostInt, op)? as i8))
-            }
-            (Value::Int16(a), Value::Int16(b)) => {
-                Ok(Value::Int16(
-                    arith_int(a as HostInt, b as HostInt, op)? as i16
-                ))
-            }
-            (Value::Int32(a), Value::Int32(b)) => {
-                Ok(Value::Int32(
-                    arith_int(a as HostInt, b as HostInt, op)? as i32
-                ))
-            }
-            (Value::Int64(a), Value::Int64(b)) => {
-                Ok(Value::Int64(
-                    arith_int(a as HostInt, b as HostInt, op)? as i64
-                ))
-            }
-            (Value::Float32(a), Value::Float32(b)) => {
-                Ok(Value::Float32(
-                    arith_float(a as HostFloat, b as HostFloat, op)? as f32,
-                ))
-            }
-            (Value::Float64(a), Value::Float64(b)) => {
-                Ok(Value::Float64(
-                    arith_float(a as HostFloat, b as HostFloat, op)? as f64,
-                ))
-            }
-            (a, b) => Err(Error::TypeMismatch {
-                expected: a.ty(),
-                got: b.ty(),
-            }),
+    pub fn as_int(&self) -> Result<HostInt> {
+        match self {
+            Value::Int8(x) => Ok(*x as HostInt),
+            Value::Int16(x) => Ok(*x as HostInt),
+            Value::Int32(x) => Ok(*x as HostInt),
+            Value::Int64(x) => Ok(*x as HostInt),
+            _ => Err(Error::TypeError("must be integer".into())),
         }
     }
 
-    pub(super) fn cmp(self, rhs: Value, op: &str) -> Result<Value> {
+    pub fn as_float(&self) -> Result<HostFloat> {
+        match self {
+            Value::Float32(x) => Ok(*x as HostFloat),
+            Value::Float64(x) => Ok(*x as HostFloat),
+            _ => Err(Error::TypeError("must be float".into())),
+        }
+    }
+
+    pub(super) fn cmp(self, rhs: Value, op: CompareOp) -> Result<Value> {
         macro_rules! do_cmp {
             ($a:expr, $b:expr) => {
                 Ok(Value::Bool(match op {
-                    "eq" => $a == $b,
-                    "ne" => $a != $b,
-                    "lt" => $a < $b,
-                    "gt" => $a > $b,
-                    "le" => $a <= $b,
-                    "ge" => $a >= $b,
+                    CompareOp::Eq => $a == $b,
+                    CompareOp::Ne => $a != $b,
+                    CompareOp::Lt => $a < $b,
+                    CompareOp::Gt => $a > $b,
+                    CompareOp::Le => $a <= $b,
+                    CompareOp::Ge => $a >= $b,
+                    #[allow(unused)]
                     _ => unreachable!(),
                 }))
             };

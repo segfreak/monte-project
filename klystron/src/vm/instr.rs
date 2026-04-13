@@ -39,4 +39,16 @@ pub enum Instruction {
     Gt,
     Le,
     Ge,
+
+    BitAnd,
+    BitOr,
+    BitXor,
+    BitShl,
+    BitShr,
+
+    And,
+    Or,
+
+    Neg,
+    Not,
 }

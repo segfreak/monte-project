@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "klystron"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "log",
  "pretty_env_logger",
@@ -90,6 +90,7 @@ name = "monte"
 version = "0.1.0"
 dependencies = [
  "codespan-reporting",
+ "klystron",
 ]
 
 [[package]]

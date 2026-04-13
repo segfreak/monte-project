@@ -11,3 +11,4 @@ codegen-units = 4
 
 [dependencies]
 codespan-reporting = "0.13.1"
+klystron = { path = "../klystron" }

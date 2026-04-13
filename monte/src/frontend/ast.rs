@@ -12,7 +12,6 @@ pub enum ConstantLiteral {
     Integer(i64),
     FloatPoint(f64),
     Boolean(bool),
-    String(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

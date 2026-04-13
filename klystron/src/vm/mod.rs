@@ -6,7 +6,7 @@ use crate::{
     vm::{
         func::{Frame, FuncDef, FuncId},
         instr::Instruction,
-        value::Value,
+        value::{CompareOp, Value},
     },
 };
 
@@ -163,52 +163,102 @@ pub fn interpret_instr(frame: &mut Frame, instr: Instruction) -> Result<ExecEven
         Instruction::Add => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.arith(b, "add")?);
+            frame.push(a.add(b)?);
         }
         Instruction::Sub => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.arith(b, "sub")?);
+            frame.push(a.sub(b)?);
         }
         Instruction::Mul => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.arith(b, "mul")?);
+            frame.push(a.mul(b)?);
         }
         Instruction::Div => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.arith(b, "div")?);
+            frame.push(a.div(b)?);
         }
         Instruction::Eq => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.cmp(b, "eq")?);
+            frame.push(a.cmp(b, CompareOp::Eq)?);
         }
         Instruction::Ne => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.cmp(b, "ne")?);
+            frame.push(a.cmp(b, CompareOp::Ne)?);
         }
         Instruction::Lt => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.cmp(b, "lt")?);
+            frame.push(a.cmp(b, CompareOp::Lt)?);
         }
         Instruction::Gt => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.cmp(b, "gt")?);
+            frame.push(a.cmp(b, CompareOp::Gt)?);
         }
         Instruction::Le => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.cmp(b, "le")?);
+            frame.push(a.cmp(b, CompareOp::Le)?);
         }
         Instruction::Ge => {
             let b = frame.pop()?;
             let a = frame.pop()?;
-            frame.push(a.cmp(b, "ge")?);
+            frame.push(a.cmp(b, CompareOp::Ge)?);
+        }
+        Instruction::BitAnd => {
+            let b = frame.pop()?;
+            let a = frame.pop()?;
+
+            frame.push(a.bitand(b)?);
+        }
+        Instruction::BitOr => {
+            let b = frame.pop()?;
+            let a = frame.pop()?;
+
+            frame.push(a.bitor(b)?);
+        }
+        Instruction::BitXor => {
+            let b = frame.pop()?;
+            let a = frame.pop()?;
+
+            frame.push(a.bitxor(b)?);
+        }
+        Instruction::BitShl => {
+            let b = frame.pop()?;
+            let a = frame.pop()?;
+
+            frame.push(a.shl(b)?);
+        }
+        Instruction::BitShr => {
+            let b = frame.pop()?;
+            let a = frame.pop()?;
+
+            frame.push(a.shr(b)?);
+        }
+        Instruction::And => {
+            let b = frame.pop()?;
+            let a = frame.pop()?;
+
+            frame.push(a.and(b)?);
+        }
+        Instruction::Or => {
+            let b = frame.pop()?;
+            let a = frame.pop()?;
+
+            frame.push(a.or(b)?);
+        }
+        Instruction::Not => {
+            let b = frame.pop()?;
+            frame.push(b.not()?);
+        }
+        Instruction::Neg => {
+            let b = frame.pop()?;
+            frame.push(b.neg()?);
         }
     };
 

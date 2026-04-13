@@ -413,67 +413,11 @@ impl Parser {
                 "int64" => Type::Int64,
                 "float32" => Type::Float32,
                 "float64" => Type::Float64,
-                "string" => Type::String,
                 "bool" => Type::Bool,
                 _ => {
                     return Err(Error::new("undefined type".into(), self.prev_span()));
                 }
             }),
-
-            // [int32; 16]  или  [int32]
-            TokenKind::LBracket => {
-                let inner = self.parse_type()?;
-
-                if self.peek() == &TokenKind::Semicolon {
-                    self.eat(&TokenKind::Semicolon)?;
-                    let cap = match self.next() {
-                        TokenKind::Integer(n) if n > 0 => n as usize,
-                        t => {
-                            return Err(Error::new(
-                                format!("expected array size, got {:?}", t),
-                                self.prev_span(),
-                            ));
-                        }
-                    };
-                    self.eat(&TokenKind::RBracket)?;
-                    return Ok(Type::Array(Box::new(inner), cap));
-                }
-
-                self.eat(&TokenKind::RBracket)?;
-                Err(Error::new(
-                    "dynamic arrays is not supported".into(),
-                    self.prev_span(),
-                ))
-            }
-
-            // fn(int32, bool) -> int64
-            TokenKind::Fn => {
-                self.eat(&TokenKind::LParen)?;
-
-                let mut params = Vec::new();
-                while self.peek() != &TokenKind::RParen {
-                    params.push(self.parse_type()?);
-                    if self.peek() == &TokenKind::Comma {
-                        self.next();
-                    } else {
-                        break;
-                    }
-                }
-
-                self.eat(&TokenKind::RParen)?;
-
-                let ret = if self.peek() == &TokenKind::Arrow {
-                    self.next();
-                    self.parse_type()?
-                } else {
-                    Type::Void
-                };
-
-                Ok(Type::Function {
-                    params,
-                    ret: Box::new(ret),
-                })
-            }
 
             t => Err(Error::new(
                 format!("expected type, got {:?}", t),
@@ -853,7 +797,6 @@ impl Parser {
         let kind = match self.next() {
             TokenKind::Integer(n) => ExprKind::Constant(ConstantLiteral::Integer(n)),
             TokenKind::Boolean(b) => ExprKind::Constant(ConstantLiteral::Boolean(b)),
-            TokenKind::String(s) => ExprKind::Constant(ConstantLiteral::String(s)),
             TokenKind::Ident(name) => ExprKind::Ident(name),
             TokenKind::Minus => ExprKind::Unary {
                 op: UnOp::Neg,

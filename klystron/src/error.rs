@@ -9,6 +9,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error("stack underflow")]
     StackUnderflow,
+    #[error("type errror: {0}")]
+    TypeError(String),
     #[error("type mismatch: expected {expected:?}, got {got:?}")]
     TypeMismatch { expected: TypeKind, got: TypeKind },
     #[error("invalid local #{0}")]
