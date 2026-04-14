@@ -1,5 +1,3 @@
-use crate::vm::value::Value;
-
 pub type HostInt = i64;
 pub type HostFloat = f64;
 
@@ -12,6 +10,8 @@ pub struct TypeInfo {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum TypeKind {
+    Void,
+
     Bool,
 
     Int8,
@@ -24,10 +24,6 @@ pub enum TypeKind {
 }
 
 impl TypeKind {
-    pub fn of(value: &Value) -> Self {
-        value.ty()
-    }
-
     pub fn info(&self) -> TypeInfo {
         TypeInfo::of(self)
     }
@@ -36,6 +32,11 @@ impl TypeKind {
 impl TypeInfo {
     pub fn of(kind: &TypeKind) -> Self {
         match kind {
+            TypeKind::Void => Self {
+                size: 0,
+                align: 0,
+                name: "void",
+            },
             TypeKind::Bool => Self {
                 size: 1,
                 align: 1,
@@ -72,5 +73,45 @@ impl TypeInfo {
                 name: "float64",
             },
         }
+    }
+}
+
+impl TypeKind {
+    pub fn is_compatible_to(&self, right: &Self) -> bool {
+        if matches!(self, TypeKind::Void) || matches!(right, TypeKind::Void) {
+            return false;
+        }
+
+        if self == right {
+            return true;
+        }
+
+        match (self, right) {
+            // integer widening
+            (a, b) if a.is_integer() && b.is_integer() => a.info().size <= b.info().size,
+
+            // float widening
+            (a, b) if a.is_float() && b.is_float() => a.info().size <= b.info().size,
+
+            // int -> float allowed
+            (a, b) if a.is_integer() && b.is_float() => true,
+
+            _ => false,
+        }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        matches!(
+            self,
+            TypeKind::Int8 | TypeKind::Int16 | TypeKind::Int32 | TypeKind::Int64
+        )
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, TypeKind::Float32 | TypeKind::Float64)
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        self.is_integer() || self.is_float()
     }
 }

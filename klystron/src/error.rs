@@ -1,7 +1,6 @@
-use crate::{
-    types::TypeKind,
-    vm::func::{FuncId, LocalId},
-};
+use typesys::*;
+
+use crate::vm::func::{FuncId, LocalId};
 
 pub type Result<T> = std::result::Result<T, Error>;
 

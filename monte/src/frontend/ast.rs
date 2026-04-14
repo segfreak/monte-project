@@ -1,6 +1,6 @@
 use super::utils::*;
 
-use crate::typesys::Type;
+use typesys::*;
 
 pub type Program = Vec<Stmt>;
 pub type Expr = Spanned<ExprKind>;
@@ -96,7 +96,7 @@ pub enum ExprKind {
     /// {expr} as {ty}
     Cast {
         expr: Box<Expr>,
-        ty: Type,
+        ty: TypeKind,
     },
 
     /// {callee}({args...})
@@ -114,13 +114,15 @@ pub enum ExprKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
+    Dummy,
+
     Return(Option<Expr>),
     Expr(Expr),
 
     /// let {name}: {Type} = {Expr}
     VarDecl {
         name: String,
-        ty: Type,
+        ty: TypeKind,
         init: Expr,
     },
 
@@ -134,11 +136,11 @@ pub enum StmtKind {
         /// function name
         name: String,
         /// function params
-        params: Vec<(String, Type)>,
+        params: Vec<(String, TypeKind)>,
         /// function is variadic
         variadic: bool,
         /// return type
-        ret: Type,
+        ret: TypeKind,
     },
 
     /// fn {name}({params...}) ?{: ret} {body...}
@@ -146,11 +148,11 @@ pub enum StmtKind {
         /// function name
         name: String,
         /// function params
-        params: Vec<(String, Type)>,
+        params: Vec<(String, TypeKind)>,
         /// function is variadic
         variadic: bool,
         /// return type
-        ret: Type,
+        ret: TypeKind,
         /// function body
         body: Vec<Stmt>,
     },

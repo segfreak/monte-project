@@ -2,9 +2,10 @@
 
 use std::sync::Arc;
 
+use typesys::*;
+
 use klystron::{
     error::Result,
-    types::TypeKind,
     vm::{
         func::{FuncDef, FuncSignature},
         instr::Instruction,

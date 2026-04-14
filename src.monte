@@ -1,0 +1,5 @@
+fn main()
+{
+  let x: int64 = 20;
+  let y: voidd = 20;
+}

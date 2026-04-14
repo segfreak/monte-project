@@ -2,7 +2,7 @@ use super::ast::*;
 use super::error::*;
 use super::utils::*;
 
-use crate::typesys::Type;
+use typesys::*;
 
 type Token = Spanned<TokenKind>;
 
@@ -403,17 +403,17 @@ impl Parser {
         Some(res)
     }
 
-    fn parse_type(&mut self) -> Result<Type, Error> {
+    fn parse_type(&mut self) -> Result<TypeKind, Error> {
         match self.next() {
             TokenKind::Ident(s) => Ok(match s.as_str() {
-                "void" => Type::Void,
-                "int8" => Type::Int8,
-                "int16" => Type::Int16,
-                "int32" => Type::Int32,
-                "int64" => Type::Int64,
-                "float32" => Type::Float32,
-                "float64" => Type::Float64,
-                "bool" => Type::Bool,
+                "void" => TypeKind::Void,
+                "int8" => TypeKind::Int8,
+                "int16" => TypeKind::Int16,
+                "int32" => TypeKind::Int32,
+                "int64" => TypeKind::Int64,
+                "float32" => TypeKind::Float32,
+                "float64" => TypeKind::Float64,
+                "bool" => TypeKind::Bool,
                 _ => {
                     return Err(Error::new("undefined type".into(), self.prev_span()));
                 }
@@ -424,6 +424,23 @@ impl Parser {
                 self.prev_span(),
             )),
         }
+    }
+
+    pub fn parse_break(&mut self) -> Result<Stmt, Error> {
+        let start = self.peek_span().start;
+        self.next();
+        self.eat(&TokenKind::Semicolon)?;
+        Ok(Spanned::new(StmtKind::Break, start..self.prev_span().end))
+    }
+
+    pub fn parse_continue(&mut self) -> Result<Stmt, Error> {
+        let start = self.peek_span().start;
+        self.next();
+        self.eat(&TokenKind::Semicolon)?;
+        Ok(Spanned::new(
+            StmtKind::Continue,
+            start..self.prev_span().end,
+        ))
     }
 
     pub fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, Error> {
@@ -521,36 +538,79 @@ impl Parser {
         Ok(lhs)
     }
 
-    pub fn parse_stmt(&mut self) -> Result<Stmt, Error> {
+    pub fn parse_stmt_expr(&mut self, min_bp: u8) -> Result<Stmt, Error> {
+        let start = self.peek_span().start;
+        let expr = self.parse_expr(0)?;
+        self.eat(&TokenKind::Semicolon)?;
+        let end = self.prev_span().end;
+        Ok(Spanned::new(StmtKind::Expr(expr), start..end))
+    }
+
+    pub fn parse_stmt(&mut self) -> Stmt {
         match self.peek() {
-            TokenKind::Let => self.parse_var_decl(),
-            TokenKind::Return => self.parse_return(),
-            TokenKind::While => self.parse_while(),
-            TokenKind::If => self.parse_if(),
-            TokenKind::Fn => self.parse_function(),
-            TokenKind::Break => {
-                let start = self.peek_span().start;
-                self.next();
-                self.eat(&TokenKind::Semicolon)?;
-                Ok(Spanned::new(StmtKind::Break, start..self.prev_span().end))
-            }
-            TokenKind::Continue => {
-                let start = self.peek_span().start;
-                self.next();
-                self.eat(&TokenKind::Semicolon)?;
-                Ok(Spanned::new(
-                    StmtKind::Continue,
-                    start..self.prev_span().end,
-                ))
-            }
-            TokenKind::LBrace => self.parse_block(),
-            _ => {
-                let start = self.peek_span().start;
-                let expr = self.parse_expr(0)?;
-                self.eat(&TokenKind::Semicolon)?;
-                let end = self.prev_span().end;
-                Ok(Spanned::new(StmtKind::Expr(expr), start..end))
-            }
+            TokenKind::Let => match self.parse_var_decl() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
+            TokenKind::Return => match self.parse_return() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
+            TokenKind::While => match self.parse_while() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
+            TokenKind::If => match self.parse_if() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
+            TokenKind::Fn => match self.parse_function() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
+            TokenKind::Break => match self.parse_break() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
+            TokenKind::Continue => match self.parse_continue() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
+            TokenKind::LBrace => match self.parse_block() {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
+            _ => match self.parse_stmt_expr(0) {
+                Ok(r) => r,
+                Err(e) => {
+                    self.errors.push(e);
+                    Stmt::new(StmtKind::Dummy, self.prev_span())
+                }
+            },
         }
     }
 
@@ -558,13 +618,7 @@ impl Parser {
         let mut stmts = Program::new();
 
         while self.peek() != &TokenKind::EOF {
-            match self.parse_stmt() {
-                Ok(stmt) => stmts.push(stmt),
-                Err(err) => {
-                    self.errors.push(err);
-                    self.recover_stmt();
-                }
-            }
+            stmts.push(self.parse_stmt());
         }
 
         stmts
@@ -596,7 +650,7 @@ impl Parser {
 
         let mut body = Vec::new();
         while self.peek() != &TokenKind::RBrace {
-            body.push(self.parse_stmt()?);
+            body.push(self.parse_stmt());
         }
 
         self.eat(&TokenKind::RBrace)?;
@@ -654,7 +708,7 @@ impl Parser {
         let cond = self.parse_expr(0)?;
         self.eat(&TokenKind::RParen)?;
 
-        let body = Box::new(self.parse_stmt()?);
+        let body = Box::new(self.parse_stmt());
         let end = body.span.end;
         Ok(Spanned::new(StmtKind::While { cond, body }, start..end))
     }
@@ -667,11 +721,11 @@ impl Parser {
         let cond = self.parse_expr(0)?;
         self.eat(&TokenKind::RParen)?;
 
-        let then_branch = Box::new(self.parse_stmt()?);
+        let then_branch = Box::new(self.parse_stmt());
 
         let (else_branch, end) = if self.peek() == &TokenKind::Else {
             self.next();
-            let eb = Box::new(self.parse_stmt()?);
+            let eb = Box::new(self.parse_stmt());
             let end = eb.span.end;
             (Some(eb), end)
         } else {
@@ -750,7 +804,7 @@ impl Parser {
             self.next();
             self.parse_type()?
         } else {
-            Type::Void
+            TypeKind::Void
         };
 
         if self.peek() == &TokenKind::Semicolon {

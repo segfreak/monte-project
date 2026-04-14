@@ -36,8 +36,16 @@ impl ErrorReporter {
         }
     }
 
-    pub fn reported(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.errors.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.errors.clear();
     }
 
     pub fn report(&mut self, error: Error) {

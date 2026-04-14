@@ -1,6 +1,6 @@
 [package]
 name = "monte"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2024"
 
 [profile.release]
@@ -12,3 +12,4 @@ codegen-units = 4
 [dependencies]
 codespan-reporting = "0.13.1"
 klystron = { path = "../klystron" }
+typesys = { path = "../typesys" }

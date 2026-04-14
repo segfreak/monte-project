@@ -3,9 +3,9 @@ use std::sync::Arc;
 use super::instr::*;
 use crate::{
     error::{Error, Result},
-    types::*,
     vm::value::Value,
 };
+use typesys::*;
 
 pub type LocalId = u32;
 pub type FuncId = u32;

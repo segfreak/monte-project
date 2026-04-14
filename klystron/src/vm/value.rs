@@ -1,7 +1,6 @@
-use crate::{
-    error::{Error, Result},
-    types::{HostFloat, HostInt, TypeKind},
-};
+use typesys::{HostFloat, HostInt, TypeKind};
+
+use crate::error::{Error, Result};
 
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Not, Shl, Shr, Sub};
 

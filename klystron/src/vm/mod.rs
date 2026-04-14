@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use typesys::*;
+
 use crate::{
     error::{Error, Result},
-    types::TypeKind,
     vm::{
         func::{Frame, FuncDef, FuncId},
         instr::Instruction,

@@ -28,15 +28,11 @@ fn main() -> Result<(), Error> {
         reporter.report(error.clone());
     }
 
-    if reporter.reported() > 0 {
-        reporter.emit_all(&files);
-        eprintln!("too many errors reported");
-        exit(1);
-    }
+    Analyzer::new(&mut reporter).analyze(&program).ok();
 
-    if let Err(_err) = Analyzer::new(&mut reporter).analyze(&program) {
-        reporter.emit_all(&files);
-    }
+    reporter.emit_all(&files);
+
+    println!("ast:\n{:?}", program);
 
     Ok(())
 }

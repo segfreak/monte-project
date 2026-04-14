@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::typesys::{match_type, Type};
+use typesys::TypeKind;
 
 use super::ast::*;
 use super::error::*;
@@ -8,7 +8,7 @@ use super::utils::*;
 
 #[derive(Debug, Default)]
 struct Env {
-    scopes: Vec<HashMap<String, Type>>,
+    scopes: Vec<HashMap<String, TypeKind>>,
 }
 
 impl Env {
@@ -20,13 +20,13 @@ impl Env {
         self.scopes.pop();
     }
 
-    fn define(&mut self, name: String, ty: Type) {
+    fn define(&mut self, name: String, ty: TypeKind) {
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name, ty);
         }
     }
 
-    fn lookup(&self, name: &str) -> Option<&Type> {
+    fn lookup(&self, name: &str) -> Option<&TypeKind> {
         for scope in self.scopes.iter().rev() {
             if let Some(ty) = scope.get(name) {
                 return Some(ty);
@@ -40,9 +40,9 @@ impl Env {
 pub struct Analyzer<'a> {
     env: Env,
     /// function name -> (param types, return type)
-    functions: HashMap<String, (bool, Vec<Type>, Type)>,
+    functions: HashMap<String, (bool, Vec<TypeKind>, TypeKind)>,
     /// return type of the function we're currently inside
-    current_fn_ret: Option<Type>,
+    current_fn_ret: Option<TypeKind>,
     /// how many nested loops we're in (for break/continue)
     loop_depth: usize,
     /// error reporter
@@ -134,9 +134,11 @@ impl<'a> Analyzer<'a> {
 
     fn analyze_stmt(&mut self, stmt: &Stmt) -> Result<(), Error> {
         match &stmt.node {
+            StmtKind::Dummy => return Err(Error::new("dummy statement".into(), stmt.span.clone())),
+
             StmtKind::VarDecl { name, ty, init } => {
                 let init_ty = self.analyze_expr(init)?;
-                self.check_assignable(ty, &init_ty, init.span.clone())?;
+                self.check_type(ty, &init_ty, init.span.clone())?;
                 self.env.define(name.clone(), ty.clone());
             }
 
@@ -147,7 +149,7 @@ impl<'a> Analyzer<'a> {
             StmtKind::Return(expr) => {
                 let ret_ty = match expr {
                     Some(e) => self.analyze_expr(e)?,
-                    None => Type::Void,
+                    None => TypeKind::Void,
                 };
                 match &self.current_fn_ret {
                     None => {
@@ -157,7 +159,7 @@ impl<'a> Analyzer<'a> {
                         ));
                     }
                     Some(expected) => {
-                        if !match_type(&ret_ty, expected) {
+                        if ret_ty != *expected {
                             return Err(Error::new(
                                 format!(
                                     "return type mismatch: expected {:?}, got {:?}",
@@ -209,7 +211,7 @@ impl<'a> Analyzer<'a> {
                 else_branch,
             } => {
                 let cond_ty = self.analyze_expr(cond)?;
-                if cond_ty != Type::Bool {
+                if cond_ty != TypeKind::Bool {
                     return Err(Error::new(
                         format!("if condition must be bool, got {:?}", cond_ty),
                         cond.span.clone(),
@@ -223,7 +225,7 @@ impl<'a> Analyzer<'a> {
 
             StmtKind::While { cond, body } => {
                 let cond_ty = self.analyze_expr(cond)?;
-                if cond_ty != Type::Bool {
+                if cond_ty != TypeKind::Bool {
                     return Err(Error::new(
                         format!("while condition must be bool, got {:?}", cond_ty),
                         cond.span.clone(),
@@ -248,6 +250,7 @@ impl<'a> Analyzer<'a> {
                 }
             }
         }
+
         Ok(())
     }
 
@@ -255,7 +258,7 @@ impl<'a> Analyzer<'a> {
     // Expressions — returns the type of the expression
     // ------------------------------------------------------------------
 
-    fn analyze_expr(&mut self, expr: &Expr) -> Result<Type, Error> {
+    fn analyze_expr(&mut self, expr: &Expr) -> Result<TypeKind, Error> {
         match &expr.node {
             ExprKind::Dummy => Err(Error::new("dummy expression".into(), expr.span.clone())),
 
@@ -324,7 +327,7 @@ impl<'a> Analyzer<'a> {
 
                 for (arg, expected) in args.iter().zip(param_types.iter()) {
                     let arg_ty = self.analyze_expr(arg)?;
-                    self.check_assignable(expected, &arg_ty, arg.span.clone())?;
+                    self.check_type(expected, &arg_ty, arg.span.clone())?;
                 }
 
                 Ok(ret_ty)
@@ -333,7 +336,7 @@ impl<'a> Analyzer<'a> {
             ExprKind::Assign { target, value } => {
                 let target_ty = self.analyze_lvalue(target)?;
                 let value_ty = self.analyze_expr(value)?;
-                self.check_assignable(&target_ty, &value_ty, value.span.clone())?;
+                self.check_type(&target_ty, &value_ty, value.span.clone())?;
                 Ok(target_ty)
             }
         }
@@ -343,7 +346,7 @@ impl<'a> Analyzer<'a> {
     // LValues
     // ------------------------------------------------------------------
 
-    fn analyze_lvalue(&mut self, lvalue: &LValue) -> Result<Type, Error> {
+    fn analyze_lvalue(&mut self, lvalue: &LValue) -> Result<TypeKind, Error> {
         match &lvalue.node {
             LValueKind::Ident(name) => match self.env.lookup(name) {
                 Some(ty) => Ok(ty.clone()),
@@ -386,31 +389,26 @@ impl<'a> Analyzer<'a> {
         left: &Expr,
         right: &Expr,
         span: Span,
-    ) -> Result<Type, Error> {
+    ) -> Result<TypeKind, Error> {
         let lt = self.analyze_expr(left)?;
         let rt = self.analyze_expr(right)?;
 
         match op {
             // arithmetic
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
-                if !is_numeric(&lt) {
+                if !lt.is_numeric() {
                     return Err(Error::new(
                         format!("arithmetic operator requires numeric type, got {:?}", lt),
                         left.span.clone(),
                     ));
                 }
-                if !match_type(&lt, &rt) {
-                    return Err(Error::new(
-                        format!("type mismatch: {:?} vs {:?}", lt, rt),
-                        span,
-                    ));
-                }
+                self.check_type(&lt, &rt, span)?;
                 Ok(lt)
             }
 
             // bitwise
             BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::BitShl | BinOp::BitShr => {
-                if !is_integer(&lt) {
+                if !lt.is_integer() {
                     return Err(Error::new(
                         format!("bitwise operator requires integer type, got {:?}", lt),
                         left.span.clone(),
@@ -427,56 +425,51 @@ impl<'a> Analyzer<'a> {
 
             // logical
             BinOp::And | BinOp::Or => {
-                if lt != Type::Bool {
+                if lt != TypeKind::Bool {
                     return Err(Error::new(
                         format!("logical operator requires bool, got {:?}", lt),
                         left.span.clone(),
                     ));
                 }
-                if rt != Type::Bool {
+                if rt != TypeKind::Bool {
                     return Err(Error::new(
                         format!("logical operator requires bool, got {:?}", rt),
                         right.span.clone(),
                     ));
                 }
-                Ok(Type::Bool)
+                Ok(TypeKind::Bool)
             }
 
             // equality
             BinOp::Eq | BinOp::NotEq => {
-                if !match_type(&lt, &rt) {
+                if lt != rt {
                     return Err(Error::new(
                         format!("cannot compare {:?} with {:?}", lt, rt),
                         span,
                     ));
                 }
-                Ok(Type::Bool)
+                Ok(TypeKind::Bool)
             }
 
             // comparison
             BinOp::Less | BinOp::LessEq | BinOp::Great | BinOp::GreatEq => {
-                if !is_numeric(&lt) {
+                if !lt.is_numeric() {
                     return Err(Error::new(
                         format!("comparison requires numeric type, got {:?}", lt),
                         left.span.clone(),
                     ));
                 }
-                if !match_type(&lt, &rt) {
-                    return Err(Error::new(
-                        format!("type mismatch: {:?} vs {:?}", lt, rt),
-                        span,
-                    ));
-                }
-                Ok(Type::Bool)
+                self.check_type(&lt, &rt, span)?;
+                Ok(TypeKind::Bool)
             }
         }
     }
 
-    fn analyze_unary(&mut self, op: UnOp, expr: &Expr) -> Result<Type, Error> {
+    fn analyze_unary(&mut self, op: UnOp, expr: &Expr) -> Result<TypeKind, Error> {
         let ty = self.analyze_expr(expr)?;
         match op {
             UnOp::Neg => {
-                if !is_numeric(&ty) {
+                if !ty.is_numeric() {
                     return Err(Error::new(
                         format!("'-' requires numeric type, got {:?}", ty),
                         expr.span.clone(),
@@ -485,7 +478,7 @@ impl<'a> Analyzer<'a> {
                 Ok(ty)
             }
             UnOp::BitNeg => {
-                if !is_integer(&ty) {
+                if !ty.is_integer() {
                     return Err(Error::new(
                         format!("'~' requires integer type, got {:?}", ty),
                         expr.span.clone(),
@@ -494,45 +487,36 @@ impl<'a> Analyzer<'a> {
                 Ok(ty)
             }
             UnOp::Not => {
-                if ty != Type::Bool {
+                if ty != TypeKind::Bool {
                     return Err(Error::new(
                         format!("'!' requires bool, got {:?}", ty),
                         expr.span.clone(),
                     ));
                 }
-                Ok(Type::Bool)
+                Ok(TypeKind::Bool)
             }
         }
     }
 
-    fn literal_type(&self, lit: &ConstantLiteral) -> Type {
+    fn literal_type(&self, lit: &ConstantLiteral) -> TypeKind {
         match lit {
-            ConstantLiteral::Integer(_) => Type::Int32,
-            ConstantLiteral::FloatPoint(_) => Type::Float32,
-            ConstantLiteral::Boolean(_) => Type::Bool,
+            ConstantLiteral::Integer(_) => TypeKind::Int32,
+            ConstantLiteral::FloatPoint(_) => TypeKind::Float32,
+            ConstantLiteral::Boolean(_) => TypeKind::Bool,
         }
     }
 
-    fn check_assignable(&self, expected: &Type, actual: &Type, span: Span) -> Result<(), Error> {
-        if !match_type(actual, expected) {
+    fn check_type(&self, expected: &TypeKind, actual: &TypeKind, span: Span) -> Result<(), Error> {
+        if actual.is_compatible_to(expected) {
+            Ok(())
+        } else {
             Err(Error::new(
-                format!("type mismatch: expected {:?}, got {:?}", expected, actual),
+                format!(
+                    "incompatible type: expected {:?}, got {:?}",
+                    expected, actual
+                ),
                 span,
             ))
-        } else {
-            Ok(())
         }
     }
-}
-
-fn is_integer(ty: &Type) -> bool {
-    matches!(ty, Type::Int8 | Type::Int16 | Type::Int32 | Type::Int64)
-}
-
-fn is_float(ty: &Type) -> bool {
-    matches!(ty, Type::Float32 | Type::Float64)
-}
-
-fn is_numeric(ty: &Type) -> bool {
-    is_integer(ty) || is_float(ty)
 }
