@@ -1,4 +1,4 @@
-use std::{fs, process::exit};
+use std::fs;
 
 use codespan_reporting::files::SimpleFiles;
 use monte::frontend::{

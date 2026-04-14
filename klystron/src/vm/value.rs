@@ -7,6 +7,7 @@ use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Not, Shl, Shr, Sub};
 macro_rules! impl_unop {
     ($method:ident, $($variant:ident),*) => {
         impl Value {
+            #[allow(clippy::should_implement_trait)]
             pub fn $method(self) -> Result<Self> {
                 match self {
                     $(
@@ -22,6 +23,7 @@ macro_rules! impl_unop {
     };
     ($method:ident, $op:tt, $($variant:ident),*) => {
         impl Value {
+            #[allow(clippy::should_implement_trait)]
             pub fn $method(self) -> Result<Self> {
                 match self {
                     $(
@@ -40,6 +42,7 @@ macro_rules! impl_unop {
 macro_rules! impl_binop {
     ($method:ident, $($variant:ident),*) => {
         impl Value {
+            #[allow(clippy::should_implement_trait)]
             pub fn $method(self, rhs: Self) -> Result<Self> {
                 match (self, rhs) {
                     $(
@@ -55,6 +58,7 @@ macro_rules! impl_binop {
     };
     ($method:ident, $op:tt, $($variant:ident),*) => {
         impl Value {
+            #[allow(clippy::should_implement_trait)]
             pub fn $method(self, rhs: Self) -> Result<Self> {
                 match (self, rhs) {
                     $(
@@ -68,6 +72,19 @@ macro_rules! impl_binop {
             }
         }
     };
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub enum Value {
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),
+
+    Float32(f32),
+    Float64(f64),
+
+    Bool(bool),
 }
 
 impl_binop!(add, Int8, Int16, Int32, Int64, Float32, Float64);
@@ -89,19 +106,7 @@ impl_binop!(and, &&, Bool);
 
 impl_unop!(neg, Int8, Int16, Int32, Int64, Float32, Float64);
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub enum Value {
-    Int8(i8),
-    Int16(i16),
-    Int32(i32),
-    Int64(i64),
-
-    Float32(f32),
-    Float64(f64),
-
-    Bool(bool),
-}
-
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CompareOp {
     Eq,
     Ne,
