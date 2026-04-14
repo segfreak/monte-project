@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use typesys::*;
+use klystron_types::*;
 
 use crate::{
     error::{Error, Result},

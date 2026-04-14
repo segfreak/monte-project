@@ -4,6 +4,6 @@ pub mod vm;
 pub mod prelude {
     use super::*;
 
-    pub use typesys::*;
+    pub use klystron_types::*;
     pub use vm::*;
 }

@@ -2,7 +2,7 @@ use super::ast::*;
 use super::error::*;
 use super::utils::*;
 
-use typesys::*;
+use klystron_types::*;
 
 type Token = Spanned<TokenKind>;
 

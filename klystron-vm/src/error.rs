@@ -1,4 +1,4 @@
-use typesys::*;
+use klystron_types::*;
 
 use crate::vm::func::{FuncId, LocalId};
 

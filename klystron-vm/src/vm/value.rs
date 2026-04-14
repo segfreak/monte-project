@@ -1,4 +1,4 @@
-use typesys::{HostFloat, HostInt, TypeKind};
+use klystron_types::*;
 
 use crate::error::{Error, Result};
 

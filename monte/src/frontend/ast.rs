@@ -1,6 +1,6 @@
 use super::utils::*;
 
-use typesys::*;
+use klystron_types::*;
 
 pub type Program = Vec<Stmt>;
 pub type Expr = Spanned<ExprKind>;

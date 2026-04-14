@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use typesys::TypeKind;
+use klystron_types::*;
 
 use super::ast::*;
 use super::error::*;

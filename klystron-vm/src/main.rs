@@ -2,9 +2,8 @@
 
 use std::sync::Arc;
 
-use typesys::*;
-
-use klystron::{
+use klystron_types::*;
+use klystron_vm::{
     error::Result,
     vm::{
         func::{FuncDef, FuncSignature},

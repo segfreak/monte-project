@@ -59,13 +59,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "klystron"
+name = "klystron_types"
+version = "0.1.0"
+
+[[package]]
+name = "klystron_vm"
 version = "0.0.2"
 dependencies = [
+ "klystron_types",
  "log",
  "pretty_env_logger",
  "thiserror",
- "typesys",
 ]
 
 [[package]]
@@ -91,8 +95,7 @@ name = "monte"
 version = "0.0.1"
 dependencies = [
  "codespan-reporting",
- "klystron",
- "typesys",
+ "klystron_types",
 ]
 
 [[package]]
@@ -221,10 +224,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "typesys"
-version = "0.1.0"
 
 [[package]]
 name = "unicode-ident"
