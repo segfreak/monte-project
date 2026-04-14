@@ -1,5 +1,5 @@
 [package]
-name = "klystron"
+name = "klystron-vm"
 version = "0.0.2"
 edition = "2024"
 
