@@ -540,7 +540,7 @@ impl Parser {
 
     pub fn parse_stmt_expr(&mut self, min_bp: u8) -> Result<Stmt, Error> {
         let start = self.peek_span().start;
-        let expr = self.parse_expr(0)?;
+        let expr = self.parse_expr(min_bp)?;
         self.eat(&TokenKind::Semicolon)?;
         let end = self.prev_span().end;
         Ok(Spanned::new(StmtKind::Expr(expr), start..end))
@@ -622,26 +622,6 @@ impl Parser {
         }
 
         stmts
-    }
-
-    fn recover_stmt(&mut self) {
-        while !matches!(
-            self.peek(),
-            TokenKind::Semicolon
-                | TokenKind::RBrace
-                | TokenKind::Let
-                | TokenKind::If
-                | TokenKind::While
-                | TokenKind::Return
-                | TokenKind::Fn
-                | TokenKind::EOF
-        ) {
-            self.next();
-        }
-
-        if self.peek() == &TokenKind::Semicolon {
-            self.next();
-        }
     }
 
     fn parse_block(&mut self) -> Result<Stmt, Error> {
