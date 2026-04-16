@@ -2,7 +2,7 @@ use klystron_ir::{builder::FunctionBuilder, ir::FunctionDef};
 use klystron_types::{FunctionSig, TypeKind};
 
 pub fn create_test_function() -> FunctionDef {
-    let sig = FunctionSig::new(&[TypeKind::Int8, TypeKind::Int8], None);
+    let sig = FunctionSig::new(&[TypeKind::Int32, TypeKind::Int32], None);
 
     let mut b = FunctionBuilder::new("foo".to_string(), sig);
 
