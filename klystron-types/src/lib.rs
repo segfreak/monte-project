@@ -115,3 +115,18 @@ impl TypeKind {
         self.is_integer() || self.is_float()
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionSig {
+    pub params: Vec<TypeKind>,
+    pub returns: Option<TypeKind>,
+}
+
+impl FunctionSig {
+    pub fn new(params: &[TypeKind], returns: Option<TypeKind>) -> Self {
+        Self {
+            params: params.into(),
+            returns,
+        }
+    }
+}

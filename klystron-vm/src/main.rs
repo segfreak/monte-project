@@ -5,12 +5,7 @@ use std::sync::Arc;
 use klystron_types::*;
 use klystron_vm::{
     error::Result,
-    vm::{
-        func::{FuncDef, FuncSignature},
-        instr::Instruction,
-        value::Value,
-        Vm,
-    },
+    vm::{func::FuncDef, instr::Instruction, value::Value, Vm},
     *,
 };
 
@@ -20,7 +15,7 @@ fn main() -> Result<()> {
     let mut vm = Vm::new();
 
     let fib = vm.define_function(Arc::new(FuncDef {
-        sig: FuncSignature {
+        sig: FunctionSig {
             params: vec![TypeKind::Int32],
             returns: Some(TypeKind::Int32),
         },
@@ -70,7 +65,7 @@ fn main() -> Result<()> {
     }));
 
     let main = vm.define_function(Arc::new(FuncDef {
-        sig: FuncSignature {
+        sig: FunctionSig {
             params: vec![],
             returns: Some(TypeKind::Int32),
         },

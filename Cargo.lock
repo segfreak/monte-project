@@ -59,6 +59,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "klystron_ir"
+version = "0.1.0"
+dependencies = [
+ "klystron_types",
+ "log",
+]
+
+[[package]]
 name = "klystron_types"
 version = "0.1.0"
 

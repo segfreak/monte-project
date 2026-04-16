@@ -11,15 +11,9 @@ use crate::{
 pub type LocalId = u32;
 pub type FuncId = u32;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct FuncSignature {
-    pub params: Vec<TypeKind>,
-    pub returns: Option<TypeKind>,
-}
-
 #[derive(Debug, Clone)]
 pub struct FuncDef {
-    pub sig: FuncSignature,
+    pub sig: FunctionSig,
     pub locals: Vec<TypeKind>,
     pub code: Vec<Instruction>,
 }

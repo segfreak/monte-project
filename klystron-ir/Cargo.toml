@@ -1,0 +1,8 @@
+[package]
+name = "klystron_ir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+klystron_types = { path =  "../klystron-types" }
+log = "0.4.29"
