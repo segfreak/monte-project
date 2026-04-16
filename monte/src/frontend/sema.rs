@@ -79,10 +79,6 @@ impl<'a> Analyzer<'a> {
         Ok(())
     }
 
-    // ------------------------------------------------------------------
-    // First pass: collect struct/function signatures without checking bodies
-    // ------------------------------------------------------------------
-
     fn collect_definitions(&mut self, stmts: &[Stmt]) -> Result<(), Error> {
         for stmt in stmts {
             match &stmt.node {
@@ -127,10 +123,6 @@ impl<'a> Analyzer<'a> {
         }
         Ok(())
     }
-
-    // ------------------------------------------------------------------
-    // Statements
-    // ------------------------------------------------------------------
 
     fn analyze_stmt(&mut self, stmt: &Stmt) -> Result<(), Error> {
         match &stmt.node {
@@ -254,10 +246,6 @@ impl<'a> Analyzer<'a> {
         Ok(())
     }
 
-    // ------------------------------------------------------------------
-    // Expressions — returns the type of the expression
-    // ------------------------------------------------------------------
-
     fn analyze_expr(&mut self, expr: &Expr) -> Result<TypeKind, Error> {
         match &expr.node {
             ExprKind::Dummy => Err(Error::new("dummy expression".into(), expr.span.clone())),
@@ -357,31 +345,6 @@ impl<'a> Analyzer<'a> {
             },
         }
     }
-
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
-
-    // fn resolve_field(&self, ty: &Type, field: &str, span: Span) -> Result<Type, Error> {
-    //     match ty {
-    //         Type::Struct(name) => {
-    //             let fields = self.structs.get(name).ok_or_else(|| {
-    //                 Error::new(format!("undefined struct '{}'", name), span.clone())
-    //             })?;
-    //             fields
-    //                 .iter()
-    //                 .find(|(n, _)| n == field)
-    //                 .map(|(_, t)| t.clone())
-    //                 .ok_or_else(|| {
-    //                     Error::new(format!("struct '{}' has no field '{}'", name, field), span)
-    //                 })
-    //         }
-    //         _ => Err(Error::new(
-    //             format!("cannot access field '{}' on {:?}", field, ty),
-    //             span,
-    //         )),
-    //     }
-    // }
 
     fn analyze_binary(
         &mut self,

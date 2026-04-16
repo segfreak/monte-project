@@ -80,7 +80,11 @@ impl DataFlowGraph {
                     }
                 }
 
-                TerminatorKind::Br(_) => {}
+                TerminatorKind::Br { params, .. } => {
+                    for (i, &param) in params.iter().enumerate() {
+                        Self::add_use(&mut uses, param, block.id, (i + 1) as u8, UseKind::BlockArg);
+                    }
+                }
                 TerminatorKind::Ret(None) => {}
             }
         }

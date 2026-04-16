@@ -173,8 +173,8 @@ impl<'a> BlockBuilder<'a> {
         self.finish();
     }
 
-    pub fn br(&mut self, target: BlockId) {
-        self.term = Some(TerminatorKind::Br(target));
+    pub fn br(&mut self, target: BlockId, params: Vec<ValueId>) {
+        self.term = Some(TerminatorKind::Br { target, params });
         self.finish();
     }
 

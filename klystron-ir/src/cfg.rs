@@ -34,7 +34,7 @@ impl ControlFlowGraph {
             match &block.term {
                 TerminatorKind::Ret(_) => {}
 
-                TerminatorKind::Br(target) => {
+                TerminatorKind::Br { target, .. } => {
                     succ.push((*target, EdgeKind::Unconditional));
                 }
 

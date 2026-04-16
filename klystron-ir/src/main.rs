@@ -27,5 +27,6 @@ pub fn create_test_function() -> FunctionDef {
 
 fn main() {
     let def = create_test_function();
-    println!("{}", def);
+    def.verify().expect("verify error");
+    println!("{}\n{:?}", def, def);
 }

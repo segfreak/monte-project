@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use klystron_types::{FunctionSig, HostFloat, HostInt, TypeKind};
 
 pub type ValueId = u32;
@@ -172,7 +174,10 @@ pub struct Instruction {
 pub enum TerminatorKind {
     Ret(Option<ValueId>),
 
-    Br(BlockId),
+    Br {
+        target: BlockId,
+        params: Vec<ValueId>,
+    },
     BrIf {
         cond: ValueId,
         then_block: BlockId,
@@ -187,23 +192,151 @@ impl std::fmt::Display for TerminatorKind {
         match self {
             TerminatorKind::Ret(None) => write!(f, "ret"),
             TerminatorKind::Ret(Some(v)) => write!(f, "ret v{}", v),
-            TerminatorKind::Br(target) => write!(f, "br block {}", target),
+            TerminatorKind::Br { target, params } => {
+                write!(f, "br block {} ({:?})", target, params)
+            }
             TerminatorKind::BrIf {
                 cond,
                 then_block,
+                then_params,
                 else_block,
-                ..
+                else_params,
             } => {
-                if let Some(else_b) = else_block {
+                if let (Some(else_b), Some(else_p)) = (else_block, else_params) {
                     write!(
                         f,
-                        "br_if v{} -> block {}, else block {}",
-                        cond, then_block, else_b
+                        "br_if v{} -> block {} ({:?}), else block {} ({:?})",
+                        cond, then_block, then_params, else_b, else_p
                     )
                 } else {
-                    write!(f, "br_if v{} -> block {}", cond, then_block)
+                    write!(
+                        f,
+                        "br_if v{} -> block {} ({:?})",
+                        cond, then_block, then_params
+                    )
                 }
             }
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct VerifyError {
+    pub message: String,
+}
+
+pub fn verify_function(func: &FunctionDef) -> Result<(), Vec<VerifyError>> {
+    let mut errors = Vec::new();
+    let mut defined: HashSet<ValueId> = HashSet::new();
+
+    for block in &func.blocks {
+        for &p in &block.params {
+            if defined.contains(&p) {
+                errors.push(VerifyError {
+                    message: format!("value {} defined multiple times", p),
+                });
+            }
+            defined.insert(p);
+        }
+
+        for instr in &block.instrs {
+            match &instr.kind {
+                InstructionKind::Const(_) => {}
+
+                InstructionKind::Add(a, b)
+                | InstructionKind::Sub(a, b)
+                | InstructionKind::Mul(a, b)
+                | InstructionKind::Div(a, b) => {
+                    if !defined.contains(a) {
+                        errors.push(VerifyError {
+                            message: format!("use of undefined value {}", a),
+                        });
+                    }
+                    if !defined.contains(b) {
+                        errors.push(VerifyError {
+                            message: format!("use of undefined value {}", b),
+                        });
+                    }
+                }
+            }
+
+            if defined.contains(&instr.id) {
+                errors.push(VerifyError {
+                    message: format!("value {} redefined", instr.id),
+                });
+            }
+
+            defined.insert(instr.id);
+        }
+
+        match &block.term {
+            TerminatorKind::Ret(v) => {
+                if let Some(v) = v && !defined.contains(v) {
+                    errors.push(VerifyError {
+                        message: format!("return uses undefined value {}", v),
+                    });
+                }
+            }
+
+            TerminatorKind::Br { target, params } => {
+                let target_block = &func.blocks[*target as usize];
+
+                if target_block.params.len() != params.len() {
+                    errors.push(VerifyError {
+                        message: "branch argument count mismatch".into(),
+                    });
+                }
+
+                for p in params {
+                    if !defined.contains(p) {
+                        errors.push(VerifyError {
+                            message: format!("branch uses undefined value {}", p),
+                        });
+                    }
+                }
+            }
+
+            TerminatorKind::BrIf {
+                cond,
+                then_block,
+                then_params,
+                else_block,
+                else_params,
+            } => {
+                if !defined.contains(cond) {
+                    errors.push(VerifyError {
+                        message: format!("BrIf uses undefined cond {}", cond),
+                    });
+                }
+
+                let then_b = &func.blocks[*then_block as usize];
+                if then_b.params.len() != then_params.len() {
+                    errors.push(VerifyError {
+                        message: "then branch param mismatch".into(),
+                    });
+                }
+
+                if let (Some(else_b), Some(else_p)) = (else_block, else_params) {
+                    let block = &func.blocks[*else_b as usize];
+                    if block.params.len() != else_p.len() {
+                        errors.push(VerifyError {
+                            message: "else branch param mismatch".into(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+impl FunctionDef {
+    pub fn verify(&self) -> Result<(), Vec<VerifyError>> {
+        verify_function(self)
     }
 }
