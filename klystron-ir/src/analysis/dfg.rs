@@ -216,7 +216,7 @@ impl DataFlowGraph {
                     for u in &node.uses {
                         let consumer = match u.site {
                             UseSite::Instr(x) => format!("v{}", x),
-                            UseSite::Term(b) => format!("{}", b),
+                            UseSite::Term(b) => format!("block{}_term", b),
                         };
 
                         dot.push_str(&format!("  \"v{}\" -> \"{}\";\n", v, consumer));
