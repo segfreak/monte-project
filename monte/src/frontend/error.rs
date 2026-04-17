@@ -3,9 +3,8 @@ use codespan_reporting::{
     diagnostic::{Diagnostic, Label},
     files::SimpleFiles,
     term::{
-        emit_to_write_style,
+        Config, emit_to_write_style,
         termcolor::{ColorChoice, StandardStream},
-        Config,
     },
 };
 

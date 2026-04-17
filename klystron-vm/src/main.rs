@@ -5,7 +5,7 @@ use std::sync::Arc;
 use klystron_types::*;
 use klystron_vm::{
     error::Result,
-    vm::{func::FuncDef, instr::Instruction, value::Value, Vm},
+    vm::{Vm, func::FuncDef, instr::Instruction, value::Value},
     *,
 };
 

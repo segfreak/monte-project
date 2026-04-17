@@ -149,7 +149,7 @@ pub fn interpret_instr(frame: &mut Frame, instr: Instruction) -> Result<ExecEven
                 return Err(Error::TypeMismatch {
                     expected: TypeKind::Bool,
                     got: other.ty(),
-                })
+                });
             }
         },
         Instruction::Call(func_id) => {

@@ -1,6 +1,6 @@
 use klystron_types::{FunctionSig, HostFloat, HostInt, TypeKind};
 
-use crate::ir::*;
+use crate::repr::*;
 
 #[derive(Debug)]
 pub struct BlockBuilder<'a> {
@@ -173,8 +173,8 @@ impl<'a> BlockBuilder<'a> {
         self.finish();
     }
 
-    pub fn br(&mut self, target: BlockId, params: Vec<ValueId>) {
-        self.term = Some(TerminatorKind::Br { target, params });
+    pub fn br(&mut self, block: BlockId, params: Vec<ValueId>) {
+        self.term = Some(TerminatorKind::Br { block, params });
         self.finish();
     }
 

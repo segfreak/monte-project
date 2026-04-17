@@ -1,4 +1,10 @@
-use klystron_ir::{builder::FunctionBuilder, ir::FunctionDef};
+use std::fs;
+
+use klystron_ir::{
+    analysis::{cfg::ControlFlowGraph, dfg::DataFlowGraph},
+    builder::FunctionBuilder,
+    repr::FunctionDef,
+};
 use klystron_types::{FunctionSig, TypeKind};
 
 pub fn create_test_function() -> FunctionDef {
@@ -28,5 +34,12 @@ pub fn create_test_function() -> FunctionDef {
 fn main() {
     let def = create_test_function();
     def.verify().expect("verify error");
-    println!("{}\n{:?}", def, def);
+
+    let cfg = ControlFlowGraph::build(&def);
+    let dfg = DataFlowGraph::build(&def);
+
+    fs::write("cfg.dot", cfg.to_dot()).expect("cannot write");
+    fs::write("dfg.dot", dfg.to_dot()).expect("cannot write");
+
+    println!("{}", def);
 }

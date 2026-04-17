@@ -275,7 +275,7 @@ impl<'a> Analyzer<'a> {
                         return Err(Error::new(
                             "only direct function calls are supported".into(),
                             callee.span.clone(),
-                        ))
+                        ));
                     }
                 };
 
@@ -285,7 +285,7 @@ impl<'a> Analyzer<'a> {
                         return Err(Error::new(
                             format!("undefined function '{}'", fn_name),
                             callee.span.clone(),
-                        ))
+                        ));
                     }
                 };
 

@@ -4,6 +4,7 @@ use klystron_types::{FunctionSig, HostFloat, HostInt, TypeKind};
 
 pub type ValueId = u32;
 pub type BlockId = u32;
+pub type FunctionId = u32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Constant {
@@ -146,6 +147,8 @@ pub enum InstructionKind {
     Sub(ValueId, ValueId),
     Mul(ValueId, ValueId),
     Div(ValueId, ValueId),
+
+    Call(FunctionId, Vec<ValueId>),
 }
 
 impl std::fmt::Display for InstructionKind {
@@ -160,6 +163,7 @@ impl std::fmt::Display for InstructionKind {
             InstructionKind::Sub(a, b) => write!(f, "sub v{}, v{}", a, b),
             InstructionKind::Mul(a, b) => write!(f, "mul v{}, v{}", a, b),
             InstructionKind::Div(a, b) => write!(f, "div v{}, v{}", a, b),
+            InstructionKind::Call(func, params) => write!(f, "call f{}, v{:?}", func, params),
         }
     }
 }
@@ -175,7 +179,7 @@ pub enum TerminatorKind {
     Ret(Option<ValueId>),
 
     Br {
-        target: BlockId,
+        block: BlockId,
         params: Vec<ValueId>,
     },
     BrIf {
@@ -192,8 +196,8 @@ impl std::fmt::Display for TerminatorKind {
         match self {
             TerminatorKind::Ret(None) => write!(f, "ret"),
             TerminatorKind::Ret(Some(v)) => write!(f, "ret v{}", v),
-            TerminatorKind::Br { target, params } => {
-                write!(f, "br block {} ({:?})", target, params)
+            TerminatorKind::Br { block, params } => {
+                write!(f, "br block {} ({:?})", block, params)
             }
             TerminatorKind::BrIf {
                 cond,
@@ -227,7 +231,22 @@ pub struct VerifyError {
 
 pub fn verify_function(func: &FunctionDef) -> Result<(), Vec<VerifyError>> {
     let mut errors = Vec::new();
-    let mut defined: HashSet<ValueId> = HashSet::new();
+    let mut defined = HashSet::<ValueId>::new();
+
+    fn report_defined(
+        errors: &mut Vec<VerifyError>,
+        defined: &HashSet<ValueId>,
+        value: &ValueId,
+    ) -> bool {
+        if !defined.contains(value) {
+            errors.push(VerifyError {
+                message: format!("use of undefined value {}", value),
+            });
+            false
+        } else {
+            true
+        }
+    }
 
     for block in &func.blocks {
         for &p in &block.params {
@@ -247,15 +266,14 @@ pub fn verify_function(func: &FunctionDef) -> Result<(), Vec<VerifyError>> {
                 | InstructionKind::Sub(a, b)
                 | InstructionKind::Mul(a, b)
                 | InstructionKind::Div(a, b) => {
-                    if !defined.contains(a) {
-                        errors.push(VerifyError {
-                            message: format!("use of undefined value {}", a),
-                        });
-                    }
-                    if !defined.contains(b) {
-                        errors.push(VerifyError {
-                            message: format!("use of undefined value {}", b),
-                        });
+                    report_defined(&mut errors, &defined, a);
+                    report_defined(&mut errors, &defined, b);
+                }
+
+                InstructionKind::Call(_, params) => {
+                    for param in params
+                    {
+                        report_defined(&mut errors, &defined, param);
                     }
                 }
             }
@@ -271,15 +289,17 @@ pub fn verify_function(func: &FunctionDef) -> Result<(), Vec<VerifyError>> {
 
         match &block.term {
             TerminatorKind::Ret(v) => {
-                if let Some(v) = v && !defined.contains(v) {
+                if let Some(v) = v
+                    && !defined.contains(v)
+                {
                     errors.push(VerifyError {
                         message: format!("return uses undefined value {}", v),
                     });
                 }
             }
 
-            TerminatorKind::Br { target, params } => {
-                let target_block = &func.blocks[*target as usize];
+            TerminatorKind::Br { block, params } => {
+                let target_block = &func.blocks[*block as usize];
 
                 if target_block.params.len() != params.len() {
                     errors.push(VerifyError {

@@ -866,7 +866,7 @@ impl Parser {
                 return Err(Error::new(
                     format!("unexpected token {:?}", t),
                     self.prev_span(),
-                ))
+                ));
             }
         };
 
